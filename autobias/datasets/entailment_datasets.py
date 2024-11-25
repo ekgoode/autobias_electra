@@ -12,7 +12,7 @@ from autobias.utils import downloader, py_utils
 HANS_URL = "https://raw.githubusercontent.com/tommccoy1/hans/master/heuristics_evaluation_set.txt"
 # Taken from the GLUE script
 MNLI_URL = "https://firebasestorage.googleapis.com/v0/b/mtl-sentence-representations.appspot.com/o/data%2FMNLI.zip?alt=media&token=50329ea1-e339-40e2-809c-10c40afff3ce"
-
+SNLI_URL = "https://nlp.stanford.edu/projects/snli/snli_1.0.zip"
 
 NLI_LABELS = ["contradiction", "entailment", "neutral"]
 NLI_LABEL_MAP = {k: i for i, k in enumerate(NLI_LABELS)}
@@ -48,6 +48,66 @@ class EntailmentDataset(Dataset):
 
   def n_classes(self):
     return 3 if self.three_class else 2
+  
+class _SnliBase(Dataset):
+    """Base class for loading SNLI dataset"""
+
+    def __init__(self, split, src, sample=None):
+        self.src = src
+        self.sample = sample
+        sample_name = None
+        if sample:
+            if sample % 1000 == 0:
+                sample_name = str(sample // 1000) + "k"
+            else:
+                sample_name = str(sample)
+        super().__init__("snli", split, sample_name)
+
+    def _load(self):
+        snli_source = join(config.GLUE_DATA, "SNLI")
+        if not (exists(snli_source) and len(listdir(snli_source)) > 0):
+            downloader.download_zip("SNLI", SNLI_URL, config.GLUE_DATA)
+
+        filename = join(config.GLUE_DATA, "SNLI", self.src)
+        logging.info("Loading %s", filename)
+
+        with open(filename) as f:
+            f.readline()  # Skip header
+            lines = f.readlines()
+
+        if self.sample:
+            if len(lines) < self.sample:
+                raise ValueError("Requested a sample of %d, but only %d items" % (self.sample, len(lines)))
+            np.random.RandomState(26096781 + self.sample).shuffle(lines)
+            lines = lines[:self.sample]
+
+        out = []
+        for i, line in enumerate(lines):
+            line = line.strip().split("\t")
+            ex_id = line[0]
+            premise = line[1]
+            hypothesis = line[2]
+            label = line[-1]
+            if label not in NLI_LABEL_MAP:
+                continue  # Skip problematic entries
+            out.append(TextPairExample(ex_id, premise, hypothesis, NLI_LABEL_MAP[label]))
+        return out
+
+
+class SnliTrain(_SnliBase):
+    def __init__(self, sample=None):
+        super().__init__("train", "snli_1.0_train.txt", sample)
+
+
+class SnliDev(_SnliBase):
+    def __init__(self, sample=None):
+        super().__init__("dev", "snli_1.0_dev.txt", sample)
+
+
+class SnliTest(_SnliBase):
+    def __init__(self, sample=None):
+        super().__init__("test", "snli_1.0_test.txt", sample)
+
 
 
 class _MnliBase(Dataset):
