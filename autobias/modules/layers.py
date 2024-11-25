@@ -177,9 +177,12 @@ class Conv2d(Layer):
 
 
 class MaxPooling(Layer):
-  def forward(self, x, mask=None):
-    return ops.max_pool(x, mask)
+  def __init__(self):
+    super().__init__()
 
+  def forward(self, x, mask=None)
+    return ops.max_pool(x, mask)
+  
   def reset_parameters(self):
     pass
 

@@ -2,6 +2,8 @@ import argparse
 # Ignore tensor future works, thank you transformers for importing that
 import json
 import warnings
+import sys
+sys.path.append('/content')
 
 from autobias.experiments.train_args import add_train_args
 from autobias.model.snli_model import ElectraAndEmbedModel, FromPooled, \

@@ -151,7 +151,7 @@ class _ConfiguredJSONEncoder(json.JSONEncoder):
       return int(obj)
     elif isinstance(obj, np.floating):
       return float(obj)
-    elif isinstance(obj, bool_):
+    elif isinstance(obj, bool):
       return bool(obj)
     elif isinstance(obj, np.ndarray):
       return obj.tolist()
