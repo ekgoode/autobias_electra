@@ -114,7 +114,7 @@ def get_configuration(obj):
         raise ValueError()
       output[k] = get_configuration(v)
     return output
-  elif obj_type in {str, int, float, bool, type(None), np.integer, np.floating, np.ndarray, np.bool}:
+  elif obj_type in {str, int, float, bool, type(None), np.integer, np.floating, np.ndarray, bool}:
     return obj
   else:
     raise ValueError("Can't configure obj " + str(obj_type))
@@ -125,7 +125,7 @@ def _to_py(obj):
     return int(obj)
   elif isinstance(obj, np.floating):
     return float(obj)
-  elif isinstance(obj, np.bool):
+  elif isinstance(obj, bool):
     return bool(obj)
   elif isinstance(obj, np.ndarray):
     return obj.tolist()
@@ -151,7 +151,7 @@ class _ConfiguredJSONEncoder(json.JSONEncoder):
       return int(obj)
     elif isinstance(obj, np.floating):
       return float(obj)
-    elif isinstance(obj, np.bool_):
+    elif isinstance(obj, bool_):
       return bool(obj)
     elif isinstance(obj, np.ndarray):
       return obj.tolist()

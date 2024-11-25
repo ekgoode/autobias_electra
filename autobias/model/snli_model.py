@@ -102,6 +102,68 @@ class ElectraAndEmbedOutput:
             self.embed_a, self.embed_b, self.mask_a, self.mask_b, None
         )
 
+class FromPooled(Predictor):
+    def __init__(self, mapper):
+        super().__init__()
+        self.mapper = mapper
+
+    def reset_parameters(self):
+        self.mapper.reset_parameters()
+
+    def forward(self, electra_out: ElectraOutput, labels=None, **kwargs):
+        return self.mapper(electra_out.pooled)
+    
+class FromEmbeddingPredictor(Predictor):
+    def __init__(self,predictor):
+        super().__init__()
+        self.predictor = predictor
+
+    def reset_parameters(self):
+        self.predictor.reset_parameters()
+
+    def has_batch_loss(self):
+        return self.predictor.has_batch_loss()
+    
+    def forward(self, features: TextPairTensors, label=None, **kwargs):
+        return self.predictor(features, label, **kwargs)
+
+class BifusePredictor(Predictor):
+    def __init__(self, pre_mapper: Mapper, bifuse_layer, post_mapper: Mapper, pooler, pooled_mapper):
+        super().__init__()
+        self.pre_mapper = pre_mapper
+        self.bifuse_layer = bifuse_layer
+        self.post_mapper = post_mapper
+        self.pooler = pooler
+        self.pooled_mapper = pooled_mapper
+
+    def reset_parameters(self):
+        if self.pre_mapper:
+            self.pre_mapper.reset_parameters()
+        self.bifuse_layer.reset_parameters()
+        if self.post_mapper:
+            self.post_mapper.reset_parameters()
+        self.pooler.reset_parameters()
+        self.pooled_mapper.reset_parameters()
+
+    def forward(self, features: TextPairTensors, label=None, **kwargs):
+        a_embed, a_mask = features.a_embed, features.a_mask
+        b_embed, b_mask = features.b_embed, features.b_mask
+
+        if self.pre_mapper:
+            a_embed = self.pre_mapper(a_embed, a_mask)
+            b_embed = self.pre_mapper(b_embed, b_mask)
+
+        a_embed, b_embed = self.bifuse_layer(a_embed, b_embed, a_mask, b_mask)
+
+        if self.post_mapper:
+            a_embed = self.post_mapper(a_embed, a_mask)
+            b_embed = self.post_mapper(b_embed, b_mask)
+
+        pooled = torch.cat([self.pooler(a_embed, a_mask), self.pooler(b_embed, b_mask)], 1)
+        pooled = self.pooled_mapper(pooled)
+
+        return pooled
+    
 
 class ElectraAndEmbedModel(Model):
     """Encodes text pairs as an `ElectraAndEmbedOutput`, which is passed to `self.predictor`"""
