@@ -128,58 +128,56 @@ class Adam(ConfiguredOptimizer):
     self.num_train_steps = num_train_steps
 
     if fp16:
-      model = model.half()
+        model = model.half()
 
     if self.alternative_sets:
-      param_optimizer = list(model.named_parameters())
-      total = len(param_optimizer)
-      params = []
-      self._lrs = []
-      for alt_set in self.alternative_sets:
-        prefix = re.compile(alt_set.regex)
-        other_params = []
-        alter_params = []
-        for n, p in param_optimizer:
-          if prefix.match(n):
-            alter_params.append(p)
-          else:
-            other_params.append((n, p))
-        if len(alter_params) == 0:
-          self._lrs.append(None)
-          logging.warning(f"No parameters for group {alt_set.set_name}")
-          continue
-        logging.info(f"{len(alter_params)}/{total} parameters in set {alt_set.set_name}")
-        opt_parameters = dict(alt_set.opt_parameters)
-        opt_parameters["params"] = alter_params
-        params.append(opt_parameters)
-        param_optimizer = other_params
-        self._lrs.append(alt_set.opt_parameters.get("lr", self.lr))
+        param_optimizer = list(model.named_parameters())
+        total = len(param_optimizer)
+        params = []
+        self._lrs = []
+        for alt_set in self.alternative_sets:
+            prefix = re.compile(alt_set.regex)
+            other_params = []
+            alter_params = []
+            for n, p in param_optimizer:
+                if prefix.match(n):
+                    alter_params.append(p)
+                else:
+                    other_params.append((n, p))
+            if len(alter_params) == 0:
+                self._lrs.append(None)
+                logging.warning(f"No parameters for group {alt_set.set_name}")
+                continue
+            logging.info(f"{len(alter_params)}/{total} parameters in set {alt_set.set_name}")
+            opt_parameters = dict(alt_set.opt_parameters)
+            opt_parameters["params"] = alter_params
+            params.append(opt_parameters)
+            param_optimizer = other_params
+            self._lrs.append(alt_set.opt_parameters.get("lr", self.lr))
 
-      if len(param_optimizer) > 0:
-        logging.info(f"{len(param_optimizer)}/{total} remaining parameters")
-        params.append({'params': [x[1] for x in param_optimizer]})
+        if len(param_optimizer) > 0:
+            logging.info(f"{len(param_optimizer)}/{total} remaining parameters")
+            params.append({'params': [x[1] for x in param_optimizer]})
     else:
-      params = list(model.parameters())
-      self._lrs = self.lr
+        params = list(model.parameters())
+        self._lrs = self.lr
 
     self.fp16 = fp16
     from apex.optimizers import FusedAdam
     self._opt = FusedAdam(
-      params, lr=self.lr, betas=(self.b1, self.b2),
-      eps=self.e, weight_decay=self.weight_decay,
-      bias_correction=True,
-      # If not fp16, we clip the grad norm ourself
-      max_grad_norm=self.max_grad_norm if fp16 else 0
+        params, lr=self.lr, betas=(self.b1, self.b2),
+        eps=self.e, weight_decay=self.weight_decay,
+        bias_correction=True
     )
 
+    # Manual gradient clipping if fp16 is enabled
     if fp16:
-      from apex.optimizers import FP16_Optimizer
-      if self.loss_scale is None:
-        self._opt = FP16_Optimizer(self._opt, dynamic_loss_scale=True, verbose=False)
-      else:
-        self._opt = FP16_Optimizer(self._opt, static_loss_scale=self.loss_scale, verbose=False)
-      return model
-
+        from apex.optimizers import FP16_Optimizer
+        if self.loss_scale is None:
+            self._opt = FP16_Optimizer(self._opt, dynamic_loss_scale=True, verbose=False)
+        else:
+            self._opt = FP16_Optimizer(self._opt, static_loss_scale=self.loss_scale, verbose=False)
+        return model
 
 class SGD(ConfiguredOptimizer):
   version = 2

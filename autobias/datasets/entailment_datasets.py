@@ -11,8 +11,8 @@ from autobias.utils import downloader, py_utils
 
 HANS_URL = "https://raw.githubusercontent.com/tommccoy1/hans/master/heuristics_evaluation_set.txt"
 # Taken from the GLUE script
-MNLI_URL = "https://firebasestorage.googleapis.com/v0/b/mtl-sentence-representations.appspot.com/o/data%2FMNLI.zip?alt=media&token=50329ea1-e339-40e2-809c-10c40afff3ce"
-SNLI_URL = "https://nlp.stanford.edu/projects/snli/snli_1.0.zip"
+#MNLI_URL = "https://dl.fbaipublicfiles.com/glue/data/MNLI.zip"
+#SNLI_URL = "https://nlp.stanford.edu/projects/snli/snli_1.0.zip"
 
 NLI_LABELS = ["contradiction", "entailment", "neutral"]
 NLI_LABEL_MAP = {k: i for i, k in enumerate(NLI_LABELS)}
@@ -109,61 +109,59 @@ class SnliTest(_SnliBase):
         super().__init__("test", "snli_1.0_test.txt", sample)
 
 
+from datasets import load_dataset
 
-class _MnliBase(Dataset):
-  def __init__(self, split, src, example_id_prefix, sample=None):
-    self.src = src
-    self.example_id_prefix = example_id_prefix
-    self.sample = sample
-    sample_name = None
-    if sample:
-      if sample % 1000 == 0:
-        sample_name = str(sample // 1000) + "k"
-      else:
-        sample_name = str(sample)
-    super().__init__("mnli", split, sample_name)
+class MnliDataset(Dataset):
+    """Base class for MNLI dataset using Hugging Face datasets library."""
 
-  def _load(self):
-    mnli_source = join(config.GLUE_DATA, "MNLI")
-    if not (exists(mnli_source) and len(listdir(mnli_source)) > 0):
-      downloader.download_zip("MNLI", MNLI_URL, config.GLUE_DATA)
+    def __init__(self, split: str, sample=None):
+        """
+        :param split: Dataset split to load ('train', 'validation_matched', 'validation_mismatched')
+        :param sample: Number of samples to randomly select (optional)
+        """
+        self.split = split
+        self.sample = sample
+        super().__init__("mnli", split, None if sample is None else str(sample))
 
-    filename = join(config.GLUE_DATA, "MNLI", self.src)
-    logging.info("Loading %s", filename)
+    def _load(self):
+        """
+        Load the MNLI dataset using Hugging Face datasets library and optionally sample data.
+        """
+        dataset = load_dataset("glue", "mnli", split=self.split)
 
-    with open(filename) as f:
-      f.readline()
-      lines = f.readlines()
+        # Sampling logic
+        if self.sample is not None:
+            if len(dataset) < self.sample:
+                raise ValueError(f"Requested a sample of {self.sample}, but only {len(dataset)} items are available.")
+            dataset = dataset.shuffle(seed=42).select(range(self.sample))
 
-    if self.sample:
-      if len(lines) < self.sample:
-        raise ValueError("Requested a sample of %d, but only %d items" % (self.sample, len(lines)))
-      np.random.RandomState(26096781 + self.sample).shuffle(lines)
-      lines = lines[:self.sample]
-
-    out = []
-    for i, line in enumerate(lines):
-      line = line.strip().split("\t")
-      ex_id = line[0]
-      if self.example_id_prefix:
-        ex_id = self.example_id_prefix + ex_id
-      out.append(TextPairExample(ex_id, line[8], line[9], NLI_LABEL_MAP[line[-1]]))
-    return out
+        examples = []
+        for row in dataset:
+            examples.append(TextPairExample(
+                example_id=row['idx'],
+                text_a=row['premise'],
+                text_b=row['hypothesis'],
+                label=NLI_LABEL_MAP.get(row['label'], -1)  # Map labels to numerical indices
+            ))
+        return examples
 
 
-class MnliTrain(_MnliBase):
-  def __init__(self, sample=None):
-    super().__init__("train", "train.tsv", "tr", sample)
+class MnliTrain(MnliDataset):
+    """MNLI Training Dataset."""
+    def __init__(self, sample=None):
+        super().__init__(split="train", sample=sample)
 
 
-class MnliDevMatched(_MnliBase):
-  def __init__(self, sample=None):
-    super().__init__("dev_matched", "dev_matched.tsv", "dev", sample)
+class MnliDevMatched(MnliDataset):
+    """MNLI Development Matched Dataset."""
+    def __init__(self, sample=None):
+        super().__init__(split="validation_matched", sample=sample)
 
 
-class MnliDevUnmatched(_MnliBase):
-  def __init__(self, sample=None):
-    super().__init__("dev_unmatched", "dev_mismatched.tsv", "dev", sample)
+class MnliDevUnmatched(MnliDataset):
+    """MNLI Development Mismatched Dataset."""
+    def __init__(self, sample=None):
+        super().__init__(split="validation_mismatched", sample=sample)
 
 
 class Hans(Dataset):

@@ -3,8 +3,12 @@ import argparse
 import json
 import warnings
 import sys
-sys.path.append('/content')
+import importlib
 
+sys.path.append('/content')
+from autobias.training import optimizer
+from autobias.model import snli_model
+importlib.reload(snli_model)
 from autobias.experiments.train_args import add_train_args
 from autobias.model.snli_model import ElectraAndEmbedModel, FromPooled, \
   FromEmbeddingPredictor, BifusePredictor
@@ -31,7 +35,7 @@ from autobias.training.post_fit_rescaling_ensemble import FitRescaleParameters
 from autobias.modules.layers import FullyConnected, Dropout, seq, MaxPooling
 from autobias.training.data_batcher import SortedBatchSampler, \
   SubsetSampler, StratifiedSampler
-from autobias.training.optimizer import Adam, LinearTriangle, ParameterSet, ConstantLearningRate
+from autobias.training.optimizer import Adam, SGD, LinearTriangle, ParameterSet, ConstantLearningRate
 from autobias.training.trainer import Trainer, EvalDataset
 from autobias.utils import py_utils
 
@@ -127,12 +131,12 @@ def main():
     "google/electra-small-discriminator", 128,
     NltkAndPunctTokenizer(), enc, predictor)
 
-  opt = Adam(
-    lr=5e-5, e=1e-6, weight_decay=0.01, max_grad_norm=1.0,
-    schedule=LinearTriangle(0.1),
-    alternative_sets=bias_set + [
-      ParameterSet("no-weight-decay", ".*(\.bias|LayerNorm\.weight)$", dict(weight_decay=0.0))
-    ]
+  opt = SGD(
+      lr=0.01,  # Learning rate
+      momentum=0.9,  # Momentum factor
+      weight_decay=0.01,  # Weight decay for regularization
+      clip_grad_norm=1.0,  # Gradient clipping (optional)
+      schedule=LinearTriangle(0.1)  # Learning rate schedule
   )
 
   n_final_eval = 512 if dbg else 4096
@@ -143,19 +147,11 @@ def main():
   trainer = Trainer(
     opt,
     train,
-    [
-      EvalDataset(dev, TorchDataIterator(SortedBatchSampler(batch_size)), "dev"),
-    ],
+    eval_sets=None,
     pre_eval_hook=FitRescaleParameters(256, n_final_eval),
-    train_eval_iterator=TorchDataIterator(SubsetSampler(None if dbg else 10000, batch_size, True)),
     train_iterator=TorchDataIterator(StratifiedSampler(batch_size)),
     num_train_epochs=args.epochs,
-    evaluator=evaluator,
-    tb_factor=batch_size/256.,
-    evals_to_print=[
-      "bias-acc/ind", "bias-acc/ood", "debiased-acc/ind",
-      "debiased-acc/ood", "joint-acc/ind",   "joint-acc/ood"
-    ]
+    tb_factor=batch_size/256
   )
 
   if args.init_only:

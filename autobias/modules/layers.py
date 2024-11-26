@@ -180,7 +180,7 @@ class MaxPooling(Layer):
   def __init__(self):
     super().__init__()
 
-  def forward(self, x, mask=None)
+  def forward(self, x, mask=None):
     return ops.max_pool(x, mask)
   
   def reset_parameters(self):
